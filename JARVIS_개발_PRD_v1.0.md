@@ -217,30 +217,40 @@ poetry add -D pytest black isort pre-commit
 ```
 
 #### 구현 태스크 1.1: Next.js 프로젝트 구조 설정
+
+**목적**: JARVIS 애플리케이션의 기본 레이아웃과 전역 설정을 구성합니다. 이는 모든 페이지에 공통으로 적용되는 메타데이터, 폰트, 그리고 전역 제공자(Provider)들을 설정하는 핵심 파일입니다.
+
+**아키텍처 역할**: Next.js 13+ App Router의 루트 레이아웃으로, 애플리케이션의 HTML 구조와 전역 상태 관리를 담당합니다.
+
 ```typescript
-// app/layout.tsx
+// app/layout.tsx - 애플리케이션 루트 레이아웃 (전역 설정 및 메타데이터 관리)
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { Providers } from '@/components/providers'
 
+// 🎨 폰트 최적화: Google Fonts를 사전 로드하여 성능 향상
 const inter = Inter({ subsets: ['latin'] })
 
+// 📄 SEO 최적화: 기본 메타데이터 설정으로 검색 엔진 최적화
 export const metadata: Metadata = {
   title: 'JARVIS - AI Meeting Assistant',
   description: 'Transform your meetings into actionable insights',
+  // 추후 OpenGraph, Twitter Cards 등 소셜 미디어 메타데이터 추가 예정
 }
 
+// 🏗️ 루트 레이아웃: 모든 페이지의 공통 구조 정의
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   return (
-    <html lang="ko">
+    <html lang="ko"> {/* 한국어 설정으로 접근성 향상 */}
       <body className={inter.className}>
+        {/* 🔧 전역 제공자: 인증, 상태관리, 테마 등 전역 컨텍스트 제공 */}
         <Providers>
-          {children}
+          {children} {/* 각 페이지 컴포넌트가 렌더링되는 영역 */}
         </Providers>
       </body>
     </html>
@@ -249,8 +259,13 @@ export default function RootLayout({
 ```
 
 #### 구현 태스크 1.2: FastAPI 기본 구조
+
+**목적**: JARVIS 백엔드 API 서버의 진입점을 설정합니다. 이 파일은 FastAPI 애플리케이션 인스턴스 생성, 미들웨어 설정, 라우터 등록 등 서버의 핵심 구성을 담당합니다.
+
+**아키텍처 역할**: 마이크로서비스 아키텍처의 API 게이트웨이 역할을 하며, 모든 HTTP 요청의 진입점이 됩니다.
+
 ```python
-# main.py
+# main.py - FastAPI 애플리케이션 메인 진입점 (서버 설정 및 라우팅 구성)
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -261,81 +276,101 @@ from app.api.routes import router
 from app.core.database import engine
 from app.models import Base
 
-# 데이터베이스 테이블 생성
+# 🗄️ 데이터베이스 초기화: 애플리케이션 시작 시 모든 테이블 생성
 Base.metadata.create_all(bind=engine)
 
+# 🚀 FastAPI 애플리케이션 인스턴스 생성
 app = FastAPI(
     title="JARVIS API",
     description="AI Meeting Assistant API",
     version="1.0.0"
+    # docs_url="/docs" - 자동 생성되는 Swagger UI 문서
+    # redoc_url="/redoc" - 자동 생성되는 ReDoc 문서
 )
 
-# 미들웨어 설정
+# 🌐 CORS 미들웨어: 프론트엔드와의 통신을 위한 교차 출처 리소스 공유 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.ALLOWED_ORIGINS,  # 허용된 도메인 목록
+    allow_credentials=True,  # 쿠키/인증 정보 허용
+    allow_methods=["*"],     # 모든 HTTP 메서드 허용
+    allow_headers=["*"],     # 모든 헤더 허용
 )
+
+# 📦 압축 미들웨어: 응답 데이터 압축으로 네트워크 성능 최적화
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# 라우터 등록
+# 🛣️ API 라우터 등록: 모든 엔드포인트를 '/api/v1' 접두사로 그룹화
 app.include_router(router, prefix="/api/v1")
 
+# 🔧 개발 서버 실행: 운영 환경에서는 Gunicorn/Uvicorn 별도 사용
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 ```
 
 #### Week 2: 인증 시스템 구현
+
+**목적**: 사용자 인증과 세션 관리를 담당하는 시스템을 구축합니다. JWT 토큰 기반 인증으로 보안성을 확보하고, React Context API를 활용하여 전역 인증 상태를 관리합니다.
+
+**아키텍처 역할**: 클라이언트 사이드 인증 상태 관리와 서버와의 인증 통신을 담당하는 핵심 컴포넌트입니다.
+
 ```typescript
-// frontend: auth 시스템
-// components/auth/AuthProvider.tsx
+// components/auth/AuthProvider.tsx - 전역 인증 상태 관리 (React Context 패턴)
 'use client'
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@/types/auth'
 import { authApi } from '@/lib/api/auth'
 
+// 🔐 인증 컨텍스트 타입 정의: 전역 인증 상태와 메서드들
 interface AuthContextType {
-  user: User | null
-  login: (email: string, password: string) => Promise<void>
-  logout: () => Promise<void>
-  isLoading: boolean
+  user: User | null          // 현재 로그인된 사용자 정보
+  login: (email: string, password: string) => Promise<void>   // 로그인 함수
+  logout: () => Promise<void>                                 // 로그아웃 함수
+  isLoading: boolean         // 인증 상태 확인 중 여부
 }
 
+// 🌍 React Context 생성: 컴포넌트 트리 전체에서 인증 상태 공유
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// 🏗️ 인증 제공자 컴포넌트: 모든 하위 컴포넌트에 인증 상태 제공
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(null)     // 사용자 정보 상태
+  const [isLoading, setIsLoading] = useState(true)        // 로딩 상태
 
+  // 🚀 컴포넌트 마운트 시 기존 인증 상태 확인
   useEffect(() => {
     checkAuth()
   }, [])
 
+  // 🔍 인증 상태 확인: localStorage의 토큰으로 사용자 정보 복원
   const checkAuth = async () => {
     try {
       const token = localStorage.getItem('token')
       if (token) {
+        // 토큰이 존재하면 서버에서 사용자 정보 가져오기
         const userData = await authApi.getCurrentUser()
         setUser(userData)
       }
     } catch (error) {
+      // 토큰이 유효하지 않으면 제거
       localStorage.removeItem('token')
     } finally {
       setIsLoading(false)
     }
   }
 
+  // 🔑 로그인 처리: 이메일/패스워드로 인증 후 토큰 저장
   const login = async (email: string, password: string) => {
     const { user, token } = await authApi.login(email, password)
-    localStorage.setItem('token', token)
-    setUser(user)
+    localStorage.setItem('token', token)  // JWT 토큰 로컬 저장
+    setUser(user)                         // 사용자 상태 업데이트
   }
 
+  // 🚪 로그아웃 처리: 토큰 제거 및 사용자 상태 초기화
   const logout = async () => {
     localStorage.removeItem('token')
     setUser(null)
+    // 추후 서버에 로그아웃 알림 API 호출 추가 가능
   }
 
   return (
@@ -345,6 +380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+// 🎣 커스텀 훅: 인증 컨텍스트를 안전하게 사용하기 위한 헬퍼
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (!context) throw new Error('useAuth must be used within AuthProvider')
@@ -352,9 +388,14 @@ export const useAuth = () => {
 }
 ```
 
+**백엔드 JWT 인증 시스템 구현**
+
+**목적**: 서버 사이드에서 JWT 토큰 기반 인증을 처리합니다. 패스워드 해싱, 토큰 생성/검증, 사용자 인증을 담당하는 핵심 보안 모듈입니다.
+
+**아키텍처 역할**: 보안 계층의 핵심으로, 모든 보호된 엔드포인트에서 사용자 인증을 담당합니다.
+
 ```python
-# backend: JWT 인증 시스템
-# app/core/auth.py
+# app/core/auth.py - JWT 토큰 기반 인증 시스템 (보안 핵심 모듈)
 from datetime import datetime, timedelta
 from typing import Optional
 import jwt
@@ -366,48 +407,72 @@ from app.core.config import settings
 from app.models.user import User
 from app.core.database import get_db
 
+# 🔒 패스워드 암호화 컨텍스트: bcrypt 알고리즘으로 안전한 해싱
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# 🛡️ HTTP Bearer 토큰 스키마: Authorization 헤더에서 JWT 토큰 추출
 security = HTTPBearer()
 
 class AuthManager:
+    """인증 관련 유틸리티 메서드들을 모아놓은 클래스"""
+    
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
+        """🔍 입력된 비밀번호와 해시된 비밀번호 비교 검증"""
         return pwd_context.verify(plain_password, hashed_password)
 
     @staticmethod
     def get_password_hash(password: str) -> str:
+        """🔐 평문 비밀번호를 bcrypt로 해시화"""
         return pwd_context.hash(password)
 
     @staticmethod
     def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+        """🎫 JWT 액세스 토큰 생성: 사용자 정보와 만료시간 포함"""
         to_encode = data.copy()
+        
+        # 만료시간 설정 (기본: 설정 파일의 값 사용)
         if expires_delta:
             expire = datetime.utcnow() + expires_delta
         else:
             expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         
+        # JWT 페이로드에 만료시간 추가
         to_encode.update({"exp": expire})
+        
+        # JWT 토큰 생성 및 반환
         encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
         return encoded_jwt
 
     @staticmethod
     def verify_token(token: str) -> dict:
+        """🔓 JWT 토큰 검증 및 페이로드 추출"""
         try:
+            # 토큰 디코딩 및 서명 검증
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             return payload
         except jwt.PyJWTError:
+            # 토큰이 유효하지 않거나 만료된 경우
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Could not validate credentials",
             )
 
+# 🔐 의존성 주입: 보호된 엔드포인트에서 현재 사용자 정보 추출
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db = Depends(get_db)
 ) -> User:
+    """
+    Authorization 헤더의 JWT 토큰으로부터 현재 사용자 정보를 추출
+    보호된 모든 API 엔드포인트에서 이 함수를 의존성으로 사용
+    """
+    # Authorization 헤더에서 토큰 추출
     token = credentials.credentials
+    
+    # 토큰 검증 및 페이로드 추출
     payload = AuthManager.verify_token(token)
-    user_id = payload.get("sub")
+    user_id = payload.get("sub")  # 토큰의 subject(사용자 ID)
     
     if user_id is None:
         raise HTTPException(
@@ -415,6 +480,7 @@ async def get_current_user(
             detail="Could not validate credentials",
         )
     
+    # 데이터베이스에서 사용자 정보 조회
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise HTTPException(
@@ -422,67 +488,78 @@ async def get_current_user(
             detail="User not found",
         )
     
-    return user
+    return user  # 인증된 사용자 객체 반환
 ```
 
 ### Phase 2: 파일 업로드 및 처리 (Week 3-4)
 
 #### Week 3: 파일 업로드 시스템
+
+**목적**: 사용자가 다양한 형식의 파일을 손쉽게 업로드할 수 있는 인터페이스를 제공합니다. 드래그 앤 드롭, 진행률 표시, 파일 검증 등 현대적인 UX 패턴을 구현합니다.
+
+**아키텍처 역할**: 클라이언트-서버 파일 전송의 프론트엔드 진입점으로, 사용자 경험 최적화와 파일 검증을 담당합니다.
+
 ```typescript
-// components/upload/FileUploader.tsx
+// components/upload/FileUploader.tsx - 파일 업로드 컴포넌트 (드래그앤드롭 + 진행률)
 'use client'
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { uploadApi } from '@/lib/api/upload'
 import { FileIcon, CloudUploadIcon } from '@heroicons/react/24/outline'
 
+// 📝 컴포넌트 Props 타입 정의
 interface FileUploaderProps {
-  onUploadComplete: (fileId: string) => void
-  acceptedTypes?: string[]
-  maxSize?: number
+  onUploadComplete: (fileId: string) => void    // 업로드 완료 콜백
+  acceptedTypes?: string[]                      // 허용할 파일 타입들
+  maxSize?: number                              // 최대 파일 크기
 }
 
 export function FileUploader({ 
   onUploadComplete, 
-  acceptedTypes = ['audio/*', '.txt', '.md', '.docx', '.srt', '.vtt'],
-  maxSize = 100 * 1024 * 1024 // 100MB
+  acceptedTypes = ['audio/*', '.txt', '.md', '.docx', '.srt', '.vtt'],  // JARVIS 지원 형식
+  maxSize = 100 * 1024 * 1024 // 100MB 제한
 }: FileUploaderProps) {
-  const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
+  // 🔄 업로드 상태 관리
+  const [uploading, setUploading] = useState(false)    // 업로드 진행 여부
+  const [progress, setProgress] = useState(0)          // 업로드 진행률 (0-100)
 
+  // 📤 파일 드롭 처리: 사용자가 파일을 선택하거나 드래그했을 때 실행
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return
 
-    const file = acceptedFiles[0]
+    const file = acceptedFiles[0]  // 단일 파일만 처리
     setUploading(true)
     setProgress(0)
 
     try {
+      // 🚀 API 호출: 파일 업로드 및 실시간 진행률 추적
       const fileId = await uploadApi.uploadFile(file, (progressEvent) => {
         const percentCompleted = Math.round(
           (progressEvent.loaded * 100) / progressEvent.total
         )
-        setProgress(percentCompleted)
+        setProgress(percentCompleted)  // 진행률 실시간 업데이트
       })
 
+      // ✅ 업로드 성공 시 부모 컴포넌트에 알림
       onUploadComplete(fileId)
     } catch (error) {
       console.error('Upload failed:', error)
-      // 에러 처리
+      // 🚨 에러 처리: 추후 토스트 알림이나 에러 상태 표시 추가
     } finally {
       setUploading(false)
       setProgress(0)
     }
   }, [onUploadComplete])
 
+  // 🎯 react-dropzone 훅: 드래그앤드롭 및 파일 선택 기능
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: acceptedTypes.reduce((acc, type) => {
       acc[type] = []
       return acc
-    }, {} as Record<string, string[]>),
-    maxSize,
-    multiple: false
+    }, {} as Record<string, string[]>),  // 파일 타입 제한
+    maxSize,                            // 파일 크기 제한
+    multiple: false                     // 단일 파일만 허용
   })
 
   return (
@@ -492,19 +569,21 @@ export function FileUploader({
         border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
         transition-colors duration-200
         ${isDragActive 
-          ? 'border-blue-500 bg-blue-50' 
-          : 'border-gray-300 hover:border-gray-400'
+          ? 'border-blue-500 bg-blue-50'     // 🎨 드래그 중 스타일
+          : 'border-gray-300 hover:border-gray-400'  // 기본 스타일
         }
-        ${uploading ? 'pointer-events-none opacity-50' : ''}
+        ${uploading ? 'pointer-events-none opacity-50' : ''}  // 업로드 중 비활성화
       `}
     >
-      <input {...getInputProps()} />
+      <input {...getInputProps()} />  {/* 숨겨진 파일 입력 요소 */}
       
       {uploading ? (
+        // 📊 업로드 진행 상태 표시
         <div className="space-y-4">
           <div className="animate-spin w-8 h-8 mx-auto">
             <CloudUploadIcon className="w-8 h-8 text-blue-500" />
           </div>
+          {/* 진행률 바 */}
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div 
               className="bg-blue-500 h-2 rounded-full transition-all duration-300"
@@ -516,6 +595,7 @@ export function FileUploader({
           </p>
         </div>
       ) : (
+        // 📁 파일 선택 안내 화면
         <div className="space-y-4">
           <FileIcon className="w-12 h-12 mx-auto text-gray-400" />
           <div>
@@ -533,9 +613,14 @@ export function FileUploader({
 }
 ```
 
+**백엔드 파일 업로드 API 구현**
+
+**목적**: 클라이언트에서 전송된 파일을 검증하고 AWS S3에 안전하게 저장합니다. 파일 메타데이터를 데이터베이스에 기록하고 백그라운드 분석 작업을 큐에 추가합니다.
+
+**아키텍처 역할**: 파일 스토리지 계층과 비즈니스 로직 계층을 연결하는 컨트롤러 역할을 합니다.
+
 ```python
-# backend: 파일 업로드 처리
-# app/api/routes/upload.py
+# app/api/routes/upload.py - 파일 업로드 API 엔드포인트 (S3 스토리지 연동)
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 import boto3
@@ -550,6 +635,7 @@ from app.core.config import settings
 
 router = APIRouter()
 
+# 🪣 AWS S3 클라이언트 초기화: 파일 저장소 연결
 s3_client = boto3.client(
     's3',
     aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
@@ -644,8 +730,13 @@ def get_content_type(mime_type: str) -> str:
 ```
 
 #### Week 4: 백그라운드 처리 시스템
+
+**목적**: 파일 분석과 같은 시간 소모적인 작업을 비동기로 처리하여 API 응답 속도를 최적화합니다. Celery와 Redis를 활용한 분산 작업 큐 시스템을 구축합니다.
+
+**아키텍처 역할**: 마이크로서비스 아키텍처의 작업 처리 계층으로, CPU 집약적인 AI 분석 작업을 별도 워커에서 처리합니다.
+
 ```python
-# app/tasks/analysis.py - Celery 백그라운드 작업
+# app/tasks/analysis.py - Celery 백그라운드 작업 시스템 (비동기 AI 분석 처리)
 from celery import Celery
 import openai
 from sqlalchemy.orm import sessionmaker
@@ -658,13 +749,17 @@ from app.models.content import ContentItem
 from app.models.analysis import AnalysisResult
 from app.core.database import engine
 
+# 🚀 Celery 애플리케이션 인스턴스: 분산 작업 큐 시스템
 celery_app = Celery(
-    "jarvis_tasks",
-    broker=settings.REDIS_URL,
-    backend=settings.REDIS_URL
+    "jarvis_tasks",                    # 앱 이름
+    broker=settings.REDIS_URL,         # 메시지 브로커 (작업 큐)
+    backend=settings.REDIS_URL         # 결과 저장소
 )
 
+# 🗄️ 데이터베이스 세션 팩토리: 워커 프로세스용 DB 연결
 SessionLocal = sessionmaker(bind=engine)
+
+# 🤖 OpenAI API 키 설정: AI 분석 서비스 연동
 openai.api_key = settings.OPENAI_API_KEY
 
 @celery_app.task
